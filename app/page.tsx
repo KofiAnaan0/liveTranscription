@@ -5,6 +5,7 @@ import React, { useEffect } from "react";
 import AOS from "aos";
 import "aos/dist/aos.css";
 import Transcription from "@/components/Transcription";
+import TranscriptionApp from "@/components/Test";
 
 export default function HomePage() {
 	useEffect(() => {
@@ -28,7 +29,7 @@ export default function HomePage() {
 
 	return (
 		<>
-			<Transcription />
+			<TranscriptionApp />
 		</>
 	);
 }
