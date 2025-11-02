@@ -1,27 +1,21 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Mic, MicOff, Upload, Download, Play, Pause, FileAudio } from "lucide-react";
 
-interface TranscriptSegment {
-  text: string;
-  timestamp: number;
-  completed: boolean;
-}
-
 const TranscriptionApp = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [currentText, setCurrentText] = useState("");
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [wsStatus, setWsStatus] = useState<"disconnected" | "connecting" | "connected">("disconnected");
+  const [audioFile, setAudioFile] = useState(null);
+  const [wsStatus, setWsStatus] = useState("disconnected");
   const [completeTranscript, setCompleteTranscript] = useState("");
   const [lastUpdateTime, setLastUpdateTime] = useState(Date.now());
   const [processingProgress, setProcessingProgress] = useState(0);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const transcriptEndRef = useRef<HTMLDivElement | null>(null);
-  const fileProcessingRef = useRef<boolean>(false);
+  const wsRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const streamRef = useRef(null);
+  const transcriptEndRef = useRef(null);
+  const fileProcessingRef = useRef(false);
 
   const connectWebSocket = () => {
     setWsStatus("connecting");
@@ -62,7 +56,7 @@ const TranscriptionApp = () => {
     wsRef.current = ws;
   };
 
-  const handleTranscriptionSegments = (segments: TranscriptSegment[]) => {
+  const handleTranscriptionSegments = (segments) => {
     let completedText = "";
     let inProgressText = "";
 
@@ -124,11 +118,9 @@ const TranscriptionApp = () => {
     setIsRecording(false);
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (event) => {
     const file = event.target.files?.[0];
-    if (file && file.type.startsWith("audio/")) {
-      setAudioFile(file);
-    }
+    if (file && file.type.startsWith("audio/")) setAudioFile(file);
   };
 
   const processAudioFile = async () => {
