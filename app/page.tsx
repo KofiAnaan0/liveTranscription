@@ -6,6 +6,8 @@ import AOS from "aos";
 import "aos/dist/aos.css";
 import Transcription from "@/components/Transcription";
 import TranscriptionApp from "@/components/Test";
+import ChatInterface from "@/components/ChatInterface";
+import SummarizationInterface from "@/components/Summary";
 
 export default function HomePage() {
 	useEffect(() => {

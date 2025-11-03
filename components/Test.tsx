@@ -7,6 +7,7 @@ import {
   Play,
   Pause,
   FileAudio,
+  Send,
 } from "lucide-react";
 
 interface TranscriptSegment {
@@ -15,7 +16,7 @@ interface TranscriptSegment {
   completed: boolean;
 }
 
-const TranscriptionApp = () => {
+const TranscriptionSummaryApp = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [currentText, setCurrentText] = useState("");
@@ -26,6 +27,11 @@ const TranscriptionApp = () => {
   const [completeTranscript, setCompleteTranscript] = useState("");
   const [lastUpdateTime, setLastUpdateTime] = useState(Date.now());
   const [processingProgress, setProcessingProgress] = useState(0);
+  
+  // Summary states
+  const [showSummary, setShowSummary] = useState(false);
+  const [summary, setSummary] = useState("");
+  const [loadingSummary, setLoadingSummary] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -166,7 +172,6 @@ const TranscriptionApp = () => {
       setCompleteTranscript("");
       setCurrentText("");
 
-      // Create and play the audio element
       const audioUrl = URL.createObjectURL(audioFile);
       const audio = new Audio(audioUrl);
       audioElementRef.current = audio;
@@ -193,7 +198,7 @@ const TranscriptionApp = () => {
       const audioData = resampledBuffer.getChannelData(0);
 
       const chunkSize = 4096;
-      const chunkDuration = chunkSize / 16000; // Duration of each chunk in seconds
+      const chunkDuration = chunkSize / 16000;
       
       for (let i = 0; i < audioData.length; i += chunkSize) {
         if (!fileProcessingRef.current) break;
@@ -204,7 +209,6 @@ const TranscriptionApp = () => {
         }
 
         setProcessingProgress(Math.round((i / audioData.length) * 100));
-        // Wait for the duration of the audio chunk to sync with playback
         await new Promise((resolve) => setTimeout(resolve, chunkDuration * 1000));
       }
 
@@ -214,7 +218,6 @@ const TranscriptionApp = () => {
 
       setProcessingProgress(100);
       
-      // Clean up audio
       if (audioElementRef.current) {
         audioElementRef.current.pause();
         URL.revokeObjectURL(audioUrl);
@@ -233,7 +236,6 @@ const TranscriptionApp = () => {
       setProcessingProgress(0);
       fileProcessingRef.current = false;
       
-      // Clean up audio on error
       if (audioElementRef.current) {
         audioElementRef.current.pause();
         audioElementRef.current = null;
@@ -246,7 +248,6 @@ const TranscriptionApp = () => {
     setIsProcessingFile(false);
     setProcessingProgress(0);
     
-    // Stop audio playback
     if (audioElementRef.current) {
       audioElementRef.current.pause();
       audioElementRef.current = null;
@@ -272,6 +273,58 @@ const TranscriptionApp = () => {
   const clearTranscript = () => {
     setCompleteTranscript("");
     setCurrentText("");
+    setSummary("");
+    setShowSummary(false);
+  };
+
+  const handleSendToSummary = async () => {
+    const fullTranscript = completeTranscript + (currentText ? " " + currentText : "");
+    
+    if (!fullTranscript.trim()) {
+      alert("No transcript available to summarize.");
+      return;
+    }
+
+    setShowSummary(true);
+    setLoadingSummary(true);
+    setSummary("");
+
+    try {
+      const response = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: fullTranscript, language: 'en' }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate summary');
+      }
+
+      const data = await response.json();
+      console.log('API Response:', data);
+      
+      if (data.summary && data.summary.trim()) {
+        setSummary(data.summary.trim());
+      } else {
+        console.error('Empty or invalid summary:', data);
+        setSummary('Error: Received empty summary from API. Please check your llama.cpp server.');
+      }
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      setSummary('Error generating summary. Please check that your /api/summarize endpoint and llama.cpp server are working.');
+    } finally {
+      setLoadingSummary(false);
+    }
+  };
+
+  const downloadSummary = () => {
+    const blob = new Blob([summary], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `summary-${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   useEffect(() => {
@@ -298,7 +351,7 @@ const TranscriptionApp = () => {
           Eliminate Tedious Note-Taking
         </h1>
         <p className="text-gray-600 text-center mb-8">
-          Real-time audio transcription with live playback
+          Real-time audio transcription with AI-powered summarization
         </p>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -436,63 +489,117 @@ const TranscriptionApp = () => {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-md p-6 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-800">
-                Live Transcript
-              </h2>
-              <div className="flex flex-col md:flex-row gap-2">
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-md p-6 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  Live Transcript
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {(completeTranscript || currentText) && (
+                    <>
+                      <button
+                        onClick={handleSendToSummary}
+                        disabled={loadingSummary}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        <Send size={16} />
+                        Summarize
+                      </button>
+                      <button
+                        onClick={clearTranscript}
+                        className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm"
+                      >
+                        Clear
+                      </button>
+                      <button
+                        onClick={downloadTranscript}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
+                      >
+                        <Download size={16} />
+                        Download
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 h-[400px] overflow-y-auto bg-gray-50 rounded-lg p-6">
+                {!completeTranscript && !currentText && (
+                  <div className="text-center text-gray-400 mt-20">
+                    <Mic size={48} className="mx-auto mb-4 opacity-50" />
+                    <p>
+                      Start recording or process an audio file to see
+                      transcription...
+                    </p>
+                  </div>
+                )}
+
                 {(completeTranscript || currentText) && (
-                  <>
+                  <div className="w-full">
+                    <p className="text-gray-800 text-lg leading-relaxed whitespace-pre-wrap">
+                      {completeTranscript}
+                      {currentText && (
+                        <span className="bg-yellow-100 px-1 animate-pulse">
+                          {" " + currentText}
+                        </span>
+                      )}
+                    </p>
+                    {lastUpdateTime && (
+                      <p className="text-xs text-gray-500 mt-4">
+                        Last updated:{" "}
+                        {new Date(lastUpdateTime).toLocaleTimeString()}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div ref={transcriptEndRef} />
+              </div>
+            </div>
+
+            {showSummary && (
+              <div className="bg-white rounded-lg shadow-md p-6 flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xl font-semibold text-gray-800">
+                    AI Summary
+                  </h2>
+                  {summary && (
                     <button
-                      onClick={clearTranscript}
-                      className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-sm"
-                    >
-                      Clear
-                    </button>
-                    <button
-                      onClick={downloadTranscript}
+                      onClick={downloadSummary}
                       className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition"
                     >
                       <Download size={16} />
                       Download
                     </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="flex-1 h-[600px] overflow-y-auto bg-gray-50 rounded-lg p-6">
-              {!completeTranscript && !currentText && (
-                <div className="text-center text-gray-400 mt-20">
-                  <Mic size={48} className="mx-auto mb-4 opacity-50" />
-                  <p>
-                    Start recording or process an audio file to see
-                    transcription...
-                  </p>
+                  )}
                 </div>
-              )}
 
-              {(completeTranscript || currentText) && (
-                <div className="w-full">
-                  <p className="text-gray-800 text-lg leading-relaxed whitespace-pre-wrap">
-                    {completeTranscript}
-                    {currentText && (
-                      <span className="bg-yellow-100 px-1 animate-pulse">
-                        {" " + currentText}
+                <div className="flex-1 min-h-[200px] overflow-y-auto bg-gray-50 rounded-lg p-6">
+                  {loadingSummary ? (
+                    <div className="flex items-center justify-center h-full">
+                      <span className="animate-pulse text-gray-500">
+                        Generating summary...
                       </span>
-                    )}
-                  </p>
-                  {lastUpdateTime && (
-                    <p className="text-xs text-gray-500 mt-4">
-                      Last updated:{" "}
-                      {new Date(lastUpdateTime).toLocaleTimeString()}
+                    </div>
+                  ) : summary ? (
+                    <div className="w-full">
+                      <p className="text-gray-800 text-base leading-relaxed whitespace-pre-wrap">
+                        {summary}
+                      </p>
+                      <div className="mt-4 pt-4 border-t border-gray-200 text-sm text-gray-600">
+                        <p>Original: {(completeTranscript + currentText).length} characters</p>
+                        <p>Summary: {summary.length} characters</p>
+                        <p>Reduction: {Math.round((1 - summary.length / (completeTranscript + currentText).length) * 100)}%</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 italic">
+                      Summary will appear here...
                     </p>
                   )}
                 </div>
-              )}
-              <div ref={transcriptEndRef} />
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -500,4 +607,4 @@ const TranscriptionApp = () => {
   );
 };
 
-export default TranscriptionApp;
+export default TranscriptionSummaryApp;
